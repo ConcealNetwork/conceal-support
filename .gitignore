@@ -1,0 +1,20 @@
+# deps
+/node_modules
+
+# build
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# environment
+.env*
+!.env.example
+
+# local data (docker volumes bind here in dev)
+/.data/
+
+# misc
+.DS_Store
+npm-debug.log*

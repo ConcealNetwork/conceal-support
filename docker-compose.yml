@@ -1,0 +1,80 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    expose: ['3000']
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # IMAP poller + Discord gateway bot + scheduled jobs. Same image, different entrypoint.
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ['node', '--experimental-strip-types', '--import', './scripts/register-alias.mjs', 'scripts/worker.ts']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: conceal
+      POSTGRES_PASSWORD: conceal
+      POSTGRES_DB: conceal_support
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U conceal -d conceal_support']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - miniodata:/data
+    expose: ['9000', '9001']
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [app]
+
+  # Optional — start with `docker compose --profile signal up`
+  signal:
+    image: bbernhard/signal-cli-rest-api:latest
+    restart: unless-stopped
+    profiles: [signal]
+    environment:
+      MODE: native
+    volumes:
+      - signaldata:/home/.local/share/signal-cli
+    expose: ['8080']
+
+volumes:
+  pgdata:
+  miniodata:
+  caddydata:
+  caddyconfig:
+  signaldata:
